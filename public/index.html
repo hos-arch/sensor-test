@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>sensor-test</title>
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,"Hiragino Sans",sans-serif;background:#f4ecdc;color:#4a3b28;min-height:100vh}
+  main{max-width:640px;margin:0 auto;padding:16px;box-sizing:border-box}
+  h1{font-size:20px;margin:8px 0}
+  .card{background:#fffaf0;border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  button{font-size:16px;padding:12px 16px;border:0;border-radius:12px;background:#e8dcc0;color:#4a3b28;min-height:48px;cursor:pointer}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .num{font-size:34px;font-variant-numeric:tabular-nums;font-weight:600}
+  .lbl{font-size:13px;color:#8a7756;margin-bottom:4px}
+  .note{font-size:13px;color:#8a7756}
+  pre{white-space:pre-wrap;font-size:13px;background:#f1e8d4;padding:10px;border-radius:10px;margin:8px 0 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>センサーテスト（支援者用）</h1>
+  <p class="note">端末の傾きを数字で見ます。子どもには見せません。数字は保存しません。</p>
+
+  <div class="card">
+    <div class="row">
+      <button id="perm">センサーを許可する</button>
+      <button id="zero">水平にする（いまの持ち方を0に）</button>
+    </div>
+    <p class="note" id="status">状態：未許可</p>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div>
+        <div class="lbl">前後（手前から前へ傾ける）</div>
+        <div class="num" id="fb">--</div>
+      </div>
+      <div>
+        <div class="lbl">左右（ゆりかご用）</div>
+        <div class="num" id="lr">--</div>
+      </div>
+    </div>
+    <p class="note" id="raw">生の値：--</p>
+    <p class="note">水平にしたときを0として、そこからの角度を出します。数字はなめらかにしています。</p>
+  </div>
+
+  <div class="card">
+    <div class="lbl">じっとさせたときのゆれ幅（5秒）</div>
+    <div class="row"><button id="still">じっと5秒をはかる</button></div>
+    <p id="stillOut" class="note">まだ測っていません</p>
+  </div>
+
+  <div class="card">
+    <div class="lbl">傾けたときの最大角度（傾けたあと、記録ボタンを押す）</div>
+    <div class="row">
+      <button data-k="少し">少し 記録</button>
+      <button data-k="ふつう">ふつう 記録</button>
+      <button data-k="大きく">大きく 記録</button>
+      <button id="resetPeak">最大をリセット</button>
+    </div>
+    <pre id="log">（まだ記録がありません）</pre>
+  </div>
+
+  <div class="card">
+    <div class="lbl">水平に戻したときのゆれ（戻したあと、3秒の最大ずれ）</div>
+    <div class="row"><button id="back">戻ったら3秒はかる</button></div>
+    <p id="backOut" class="note">まだ測っていません</p>
+  </div>
+
+  <div class="card">
+    <div class="row"><button id="copy">結果をコピー</button></div>
+    <p class="note" id="copyMsg"></p>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const ALPHA = 0.25;          // なめらかさ（小さいほどなめらか）
+  let rawB = null, rawG = null; // なめらかにした生の値
+  let base = null;              // 水平の基準
+  let fb = 0, lr = 0;           // 基準からの角度
+  let listening = false;
+  let gotData = false;
+  let peak = { fb: 0, lr: 0 };
+  let still = null, back = null;
+  const records = [];
+  const backResults = [];
+  const stillResults = [];
+
+  const status = t => { $('status').textContent = '状態：' + t; };
+  const f1 = n => n.toFixed(1) + '°';
+
+  function onOri(e) {
+    if (e.beta == null || e.gamma == null) return;
+    gotData = true;
+    if (rawB === null) { rawB = e.beta; rawG = e.gamma; }
+    rawB += ALPHA * (e.beta - rawB);
+    rawG += ALPHA * (e.gamma - rawG);
+    if (!base) base = { b: rawB, g: rawG };
+    fb = rawB - base.b;
+    lr = rawG - base.g;
+    peak.fb = Math.max(peak.fb, Math.abs(fb));
+    peak.lr = Math.max(peak.lr, Math.abs(lr));
+
+    $('fb').textContent = f1(fb);
+    $('lr').textContent = f1(lr);
+    $('raw').textContent = '生の値：β ' + rawB.toFixed(1) + '°　γ ' + rawG.toFixed(1) + '°';
+
+    const now = performance.now();
+    if (still) {
+      still.minF = Math.min(still.minF, fb); still.maxF = Math.max(still.maxF, fb);
+      still.minL = Math.min(still.minL, lr); still.maxL = Math.max(still.maxL, lr);
+      if (now - still.t0 >= 5000) {
+        const s = `前後 ${f1(still.maxF - still.minF)}（${f1(still.minF)}〜${f1(still.maxF)}）／左右 ${f1(still.maxL - still.minL)}（${f1(still.minL)}〜${f1(still.maxL)}）`;
+        stillResults.push('じっと：' + s);
+        $('stillOut').textContent = 'ゆれ幅：' + s;
+        still = null;
+      }
+    }
+    if (back) {
+      back.maxF = Math.max(back.maxF, Math.abs(fb));
+      back.maxL = Math.max(back.maxL, Math.abs(lr));
+      if (now - back.t0 >= 3000) {
+        const s = `前後 ${f1(back.maxF)}／左右 ${f1(back.maxL)}`;
+        backResults.push('戻し：' + s);
+        $('backOut').textContent = '3秒の最大ずれ：' + s;
+        back = null;
+      }
+    }
+  }
+
+  async function enable() {
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== 'granted') { status('許可されませんでした'); return; }
+      }
+      if (!listening) {
+        window.addEventListener('deviceorientation', onOri);
+        listening = true;
+      }
+      status('許可済み。端末を動かしてください');
+      setTimeout(() => {
+        if (!gotData) status('数字が出ません。この端末では使えないかもしれません');
+      }, 2000);
+    } catch (err) {
+      status('エラー：' + err.message);
+    }
+  }
+
+  $('perm').onclick = enable;
+
+  $('zero').onclick = () => {
+    if (rawB === null) { status('まだ数字が出ていません'); return; }
+    base = { b: rawB, g: rawG };
+    status('水平の基準を取りました');
+  };
+
+  $('still').onclick = () => {
+    still = { t0: performance.now(), minF: 1e9, maxF: -1e9, minL: 1e9, maxL: -1e9 };
+    $('stillOut').textContent = '5秒、端末をじっとさせてください…';
+  };
+
+  $('back').onclick = () => {
+    back = { t0: performance.now(), maxF: 0, maxL: 0 };
+    $('backOut').textContent = '3秒、そのまま水平に置いてください…';
+  };
+
+  document.querySelectorAll('button[data-k]').forEach(btn => {
+    btn.onclick = () => {
+      const k = btn.dataset.k;
+      records.push(`${k}：前後 ${f1(peak.fb)}／左右 ${f1(peak.lr)}`);
+      $('log').textContent = records.join('\n');
+      peak = { fb: 0, lr: 0 };
+    };
+  });
+
+  $('resetPeak').onclick = () => {
+    peak = { fb: 0, lr: 0 };
+    status('最大をリセットしました');
+  };
+
+  $('copy').onclick = async () => {
+    const text = [
+      '[傾けたときの最大]', ...(records.length ? records : ['（なし）']),
+      '[じっと]', ...(stillResults.length ? stillResults : ['（なし）']),
+      '[水平に戻したときのずれ]', ...(backResults.length ? backResults : ['（なし）'])
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      $('copyMsg').textContent = 'コピーしました';
+    } catch (e) {
+      $('copyMsg').textContent = 'コピーできませんでした。画面の数字を手で書き写してください';
+    }
+  };
+})();
+</script>
+</body>
+</html>
