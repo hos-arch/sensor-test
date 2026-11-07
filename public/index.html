@@ -2,201 +2,542 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>sensor-test</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>かたむき そくてい</title>
 <style>
-  body{margin:0;font-family:system-ui,-apple-system,"Hiragino Sans",sans-serif;background:#f4ecdc;color:#4a3b28;min-height:100vh}
-  main{max-width:640px;margin:0 auto;padding:16px;box-sizing:border-box}
-  h1{font-size:20px;margin:8px 0}
-  .card{background:#fffaf0;border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,.08)}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  button{font-size:16px;padding:12px 16px;border:0;border-radius:12px;background:#e8dcc0;color:#4a3b28;min-height:48px;cursor:pointer}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .num{font-size:34px;font-variant-numeric:tabular-nums;font-weight:600}
-  .lbl{font-size:13px;color:#8a7756;margin-bottom:4px}
-  .note{font-size:13px;color:#8a7756}
-  pre{white-space:pre-wrap;font-size:13px;background:#f1e8d4;padding:10px;border-radius:10px;margin:8px 0 0}
+  :root{--paper:#f4ecdc;--card:#fffaf0;--ink:#4a3b28;--sub:#8a7756;--wood:#e8dcc0;--accent:#7fa86b;--gold:#d9a441}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);
+    font-family:system-ui,-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;
+    -webkit-user-select:none;user-select:none;overscroll-behavior:none}
+  #game{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none}
+  #panel{position:fixed;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom));
+    width:min(560px,calc(100% - 32px));background:var(--card);border-radius:18px;padding:14px 16px;
+    box-shadow:0 4px 14px rgba(0,0,0,.12)}
+  #msg{font-size:18px;line-height:1.5;margin:0}
+  #sub{font-size:13px;color:var(--sub);margin:6px 0 0;line-height:1.5}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  button{font:inherit;font-size:16px;padding:12px 18px;min-height:50px;border:0;border-radius:14px;
+    background:var(--wood);color:var(--ink);cursor:pointer}
+  button.main{background:var(--accent);color:#fff;font-weight:600}
+  button:disabled{opacity:.45}
+  #bar{height:8px;border-radius:4px;background:#efe4cc;margin-top:10px;overflow:hidden;display:none}
+  #bar>i{display:block;height:100%;width:0;background:var(--gold);transition:width .1s linear}
+  #result{position:fixed;inset:0;overflow:auto;background:var(--paper);display:none;padding:16px;
+    padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  #result .wrap{max-width:640px;margin:0 auto}
+  #result h1{font-size:22px;margin:8px 0 4px}
+  .card{background:var(--card);border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  td,th{padding:7px 4px;border-bottom:1px solid #efe4cc;text-align:left;vertical-align:top}
+  th{color:var(--sub);font-weight:500;width:52%}
+  td{font-variant-numeric:tabular-nums;font-weight:600}
+  pre{white-space:pre-wrap;font-size:13px;background:#f1e8d4;padding:10px;border-radius:10px;margin:0;
+    -webkit-user-select:text;user-select:text}
+  .note{font-size:13px;color:var(--sub);line-height:1.6}
+  .who{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .who button.on{background:var(--gold);color:#fff}
 </style>
 </head>
 <body>
-<main>
-  <h1>センサーテスト（支援者用）</h1>
-  <p class="note">端末の傾きを数字で見ます。子どもには見せません。数字は保存しません。</p>
+<canvas id="game"></canvas>
 
-  <div class="card">
-    <div class="row">
-      <button id="perm">センサーを許可する</button>
-      <button id="zero">水平にする（いまの持ち方を0に）</button>
+<div id="panel">
+  <p id="msg"></p>
+  <p id="sub"></p>
+  <div id="bar"><i></i></div>
+  <div class="who" id="who"></div>
+  <div class="btns" id="btns"></div>
+</div>
+
+<div id="result">
+  <div class="wrap">
+    <h1>そくてい けっか</h1>
+    <p class="note">この数字は保存されません。ページを閉じると消えます。「コピー」か「テキストで保存」で残してください。</p>
+    <div class="card"><table id="resTable"></table></div>
+    <div class="card">
+      <div class="note" style="margin-bottom:6px">手助けの角度の めやす（この端末・この持ち方での おすすめ）</div>
+      <table id="sugTable"></table>
+      <p class="note">めやすは、自然に傾けた角度から出しています。最後は、実際に子どもが持ったときの様子で決めてください。</p>
     </div>
-    <p class="note" id="status">状態：未許可</p>
-  </div>
-
-  <div class="card">
-    <div class="grid">
-      <div>
-        <div class="lbl">前後（手前から前へ傾ける）</div>
-        <div class="num" id="fb">--</div>
-      </div>
-      <div>
-        <div class="lbl">左右（ゆりかご用）</div>
-        <div class="num" id="lr">--</div>
-      </div>
+    <div class="card"><pre id="resText"></pre></div>
+    <div class="btns">
+      <button class="main" id="copyBtn">コピー</button>
+      <button id="saveBtn">テキストで保存</button>
+      <button id="againBtn">もういちど はかる</button>
     </div>
-    <p class="note" id="raw">生の値：--</p>
-    <p class="note">水平にしたときを0として、そこからの角度を出します。数字はなめらかにしています。</p>
-  </div>
-
-  <div class="card">
-    <div class="lbl">じっとさせたときのゆれ幅（5秒）</div>
-    <div class="row"><button id="still">じっと5秒をはかる</button></div>
-    <p id="stillOut" class="note">まだ測っていません</p>
-  </div>
-
-  <div class="card">
-    <div class="lbl">傾けたときの最大角度（傾けたあと、記録ボタンを押す）</div>
-    <div class="row">
-      <button data-k="少し">少し 記録</button>
-      <button data-k="ふつう">ふつう 記録</button>
-      <button data-k="大きく">大きく 記録</button>
-      <button id="resetPeak">最大をリセット</button>
-    </div>
-    <pre id="log">（まだ記録がありません）</pre>
-  </div>
-
-  <div class="card">
-    <div class="lbl">水平に戻したときのゆれ（戻したあと、3秒の最大ずれ）</div>
-    <div class="row"><button id="back">戻ったら3秒はかる</button></div>
-    <p id="backOut" class="note">まだ測っていません</p>
-  </div>
-
-  <div class="card">
-    <div class="row"><button id="copy">結果をコピー</button></div>
     <p class="note" id="copyMsg"></p>
   </div>
-</main>
+</div>
 
 <script>
 (() => {
-  const $ = id => document.getElementById(id);
-  const ALPHA = 0.25;          // なめらかさ（小さいほどなめらか）
-  let rawB = null, rawG = null; // なめらかにした生の値
-  let base = null;              // 水平の基準
-  let fb = 0, lr = 0;           // 基準からの角度
-  let listening = false;
+  'use strict';
+  // ---------- 要素 ----------
+  const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+  const $msg = document.getElementById('msg'), $sub = document.getElementById('sub');
+  const $btns = document.getElementById('btns'), $who = document.getElementById('who');
+  const $bar = document.getElementById('bar'), $barI = $bar.firstElementChild;
+  const $result = document.getElementById('result');
+
+  // ---------- センサー ----------
+  const ALPHA = 0.3;
+  let raw = null;            // なめらかにした {fb, lr}（画面の向きで入れかえ済み）
+  let base = null;           // 水平の基準
   let gotData = false;
-  let peak = { fb: 0, lr: 0 };
-  let still = null, back = null;
-  const records = [];
-  const backResults = [];
-  const stillResults = [];
+  let fb = 0, lr = 0;        // 基準からの角度
+  let fwdSign = 0;           // 前に傾けたときの符号（自動で決める）
 
-  const status = t => { $('status').textContent = '状態：' + t; };
-  const f1 = n => n.toFixed(1) + '°';
-
-  function onOri(e) {
+  function mapAxes(e){
+    const a = (screen.orientation && typeof screen.orientation.angle === 'number')
+      ? screen.orientation.angle : (window.orientation || 0);
+    const b = e.beta, g = e.gamma;
+    switch(((a % 360) + 360) % 360){
+      case 90:  return {fb:  g, lr: -b};
+      case 180: return {fb: -b, lr: -g};
+      case 270: return {fb: -g, lr:  b};
+      default:  return {fb:  b, lr:  g};
+    }
+  }
+  function onOri(e){
     if (e.beta == null || e.gamma == null) return;
     gotData = true;
-    if (rawB === null) { rawB = e.beta; rawG = e.gamma; }
-    rawB += ALPHA * (e.beta - rawB);
-    rawG += ALPHA * (e.gamma - rawG);
-    if (!base) base = { b: rawB, g: rawG };
-    fb = rawB - base.b;
-    lr = rawG - base.g;
-    peak.fb = Math.max(peak.fb, Math.abs(fb));
-    peak.lr = Math.max(peak.lr, Math.abs(lr));
-
-    $('fb').textContent = f1(fb);
-    $('lr').textContent = f1(lr);
-    $('raw').textContent = '生の値：β ' + rawB.toFixed(1) + '°　γ ' + rawG.toFixed(1) + '°';
-
-    const now = performance.now();
-    if (still) {
-      still.minF = Math.min(still.minF, fb); still.maxF = Math.max(still.maxF, fb);
-      still.minL = Math.min(still.minL, lr); still.maxL = Math.max(still.maxL, lr);
-      if (now - still.t0 >= 5000) {
-        const s = `前後 ${f1(still.maxF - still.minF)}（${f1(still.minF)}〜${f1(still.maxF)}）／左右 ${f1(still.maxL - still.minL)}（${f1(still.minL)}〜${f1(still.maxL)}）`;
-        stillResults.push('じっと：' + s);
-        $('stillOut').textContent = 'ゆれ幅：' + s;
-        still = null;
-      }
-    }
-    if (back) {
-      back.maxF = Math.max(back.maxF, Math.abs(fb));
-      back.maxL = Math.max(back.maxL, Math.abs(lr));
-      if (now - back.t0 >= 3000) {
-        const s = `前後 ${f1(back.maxF)}／左右 ${f1(back.maxL)}`;
-        backResults.push('戻し：' + s);
-        $('backOut').textContent = '3秒の最大ずれ：' + s;
-        back = null;
-      }
-    }
+    const m = mapAxes(e);
+    if (!raw) raw = {fb:m.fb, lr:m.lr};
+    raw.fb += ALPHA * (m.fb - raw.fb);
+    raw.lr += ALPHA * (m.lr - raw.lr);
+    if (base){ fb = raw.fb - base.fb; lr = raw.lr - base.lr; }
   }
+  function resetBase(){ if (raw) base = {fb:raw.fb, lr:raw.lr}; fb = 0; lr = 0; }
+  window.addEventListener('orientationchange', () => { raw = null; base = null; });
+  if (screen.orientation) screen.orientation.addEventListener?.('change', () => { raw = null; base = null; });
 
-  async function enable() {
-    try {
+  async function enableSensor(){
+    try{
       if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
+          typeof DeviceOrientationEvent.requestPermission === 'function'){
         const r = await DeviceOrientationEvent.requestPermission();
-        if (r !== 'granted') { status('許可されませんでした'); return; }
+        if (r !== 'granted') return 'denied';
       }
-      if (!listening) {
-        window.addEventListener('deviceorientation', onOri);
-        listening = true;
+      window.addEventListener('deviceorientation', onOri);
+      await new Promise(r => setTimeout(r, 1200));
+      return gotData ? 'ok' : 'nodata';
+    }catch(err){ return 'error'; }
+  }
+
+  // ---------- 記録 ----------
+  const rec = {};
+  let holder = '子ども';
+  const pct = (arr, p) => {
+    if (!arr.length) return NaN;
+    const s = [...arr].sort((a,b)=>a-b);
+    const i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+    return s[lo] + (s[hi] - s[lo]) * (i - lo);
+  };
+  const d1 = n => isFinite(n) ? n.toFixed(1) + '°' : '—';
+  const s1 = n => isFinite(n) ? n.toFixed(1) + '秒' : '—';
+
+  // ---------- 画面の文字・ボタン ----------
+  function ui(msg, sub, buttons = [], bar = null){
+    $msg.textContent = msg; $sub.textContent = sub || '';
+    $btns.innerHTML = '';
+    for (const b of buttons){
+      const el = document.createElement('button');
+      el.textContent = b.t; if (b.main) el.className = 'main';
+      el.onclick = b.f; $btns.appendChild(el);
+    }
+    $bar.style.display = bar == null ? 'none' : 'block';
+    if (bar != null) $barI.style.width = Math.round(bar * 100) + '%';
+    $who.style.display = 'none';
+  }
+  function setBar(v){ $barI.style.width = Math.round(Math.max(0, Math.min(1, v)) * 100) + '%'; }
+
+  // ---------- 音（やわらかく小さく） ----------
+  let ac = null;
+  function tone(freq, dur = .25, vol = .08){
+    try{
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .03);
+      g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + .05);
+    }catch(e){}
+  }
+  const chime = () => { [523, 659, 784].forEach((f,i) => setTimeout(() => tone(f, .4), i * 140)); };
+
+  // ---------- 描画 ----------
+  let W = 0, H = 0, DPR = 1;
+  function resize(){
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  addEventListener('resize', resize); resize();
+
+  const scene = { mode: 'idle', x: 0, armT: 0, stars: [], swing: 0, swingV: 0 };
+
+  function groundY(){ return H * 0.52; }
+  function drawBg(){
+    ctx.fillStyle = '#f4ecdc'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(160,130,80,.05)';
+    for (let i = 0; i < 40; i++){ ctx.fillRect((i * 97) % W, (i * 53) % H, 2, 2); }
+  }
+  function drawFlag(x, y, s){
+    ctx.strokeStyle = '#8a6a3c'; ctx.lineWidth = s * .06; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - s); ctx.stroke();
+    ctx.fillStyle = '#e48a6a';
+    ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s * .55, y - s * .82); ctx.lineTo(x, y - s * .64); ctx.fill();
+  }
+  // 手押し車の子ども（横から）。うしろに大人の足
+  function drawWheelbarrow(x, y, s, t){
+    const swing = Math.sin(t) * s * .12;
+    // 大人の足（顔は描かない）
+    ctx.fillStyle = '#7d8fa8';
+    ctx.fillRect(x - s * 1.55, y - s * 1.25, s * .16, s * 1.25);
+    ctx.fillRect(x - s * 1.32, y - s * 1.25, s * .16, s * 1.25);
+    ctx.fillStyle = '#5c6b7f';
+    ctx.fillRect(x - s * 1.58, y - s * .06, s * .26, s * .08);
+    ctx.fillRect(x - s * 1.35, y - s * .06, s * .26, s * .08);
+    // 大人の腕と手（子どもの足首を持つ）
+    ctx.strokeStyle = '#c7a98a'; ctx.lineWidth = s * .09; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x - s * 1.28, y - s * 1.25); ctx.lineTo(x - s * 1.05, y - s * .78); ctx.stroke();
+    ctx.fillStyle = '#f0c9a0';
+    ctx.beginPath(); ctx.arc(x - s * 1.05, y - s * .78, s * .09, 0, 7); ctx.fill();
+    // 子どものからだ（ななめ）
+    ctx.strokeStyle = '#6f93b8'; ctx.lineWidth = s * .2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x - s * 1.0, y - s * .78); ctx.lineTo(x - s * .45, y - s * .55); ctx.stroke(); // ズボン
+    ctx.strokeStyle = '#8fbf7f'; ctx.lineWidth = s * .26;
+    ctx.beginPath(); ctx.moveTo(x - s * .45, y - s * .55); ctx.lineTo(x + s * .1, y - s * .42); ctx.stroke(); // シャツ
+    // うで（交互に前へ）
+    ctx.strokeStyle = '#f0c9a0'; ctx.lineWidth = s * .1;
+    ctx.beginPath(); ctx.moveTo(x + s * .05, y - s * .42); ctx.lineTo(x + s * .05 + swing, y); ctx.stroke();
+    ctx.globalAlpha = .7;
+    ctx.beginPath(); ctx.moveTo(x - s * .02, y - s * .42); ctx.lineTo(x - s * .02 - swing, y); ctx.stroke();
+    ctx.globalAlpha = 1;
+    // あたま
+    ctx.fillStyle = '#f0c9a0';
+    ctx.beginPath(); ctx.arc(x + s * .32, y - s * .5, s * .2, 0, 7); ctx.fill();
+    ctx.fillStyle = '#6b4a2e';
+    ctx.beginPath(); ctx.arc(x + s * .29, y - s * .56, s * .2, Math.PI * 1.05, Math.PI * 2.05); ctx.fill();
+    ctx.fillStyle = '#4a3b28';
+    ctx.beginPath(); ctx.arc(x + s * .42, y - s * .48, s * .028, 0, 7); ctx.fill();
+  }
+  function drawCradle(cx, cy, s, ang){
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
+    ctx.fillStyle = '#d9b98a';
+    ctx.beginPath(); ctx.arc(0, -s * .1, s, 0, Math.PI); ctx.fill();
+    ctx.strokeStyle = '#b08d5a'; ctx.lineWidth = s * .06; ctx.stroke();
+    // 子ども
+    ctx.fillStyle = '#f0c9a0';
+    ctx.beginPath(); ctx.arc(-s * .35, -s * .2, s * .2, 0, 7); ctx.fill();
+    ctx.fillStyle = '#6b4a2e';
+    ctx.beginPath(); ctx.arc(-s * .35, -s * .26, s * .2, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8fbf7f';
+    ctx.beginPath(); ctx.ellipse(s * .15, -s * .1, s * .42, s * .17, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  function drawBowl(cx, cy, r, off){
+    ctx.strokeStyle = '#b08d5a'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(cx, cy - r, r, Math.PI * .15, Math.PI * .85); ctx.stroke();
+    ctx.fillStyle = '#e48a6a';
+    const bx = cx + Math.max(-r * .8, Math.min(r * .8, off));
+    ctx.beginPath(); ctx.arc(bx, cy - r * .1 - r * .1 + Math.abs(off) * .05, r * .13, 0, 7); ctx.fill();
+  }
+  function drawStars(dt){
+    for (const st of scene.stars){
+      st.t += dt; st.x += st.vx * dt; st.y += st.vy * dt; st.vy += 160 * dt;
+      const a = Math.max(0, 1 - st.t / 1.2);
+      ctx.globalAlpha = a; ctx.fillStyle = '#d9a441';
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++){
+        const rr = i % 2 ? st.r * .45 : st.r, an = i * Math.PI / 5 - Math.PI / 2;
+        ctx.lineTo(st.x + Math.cos(an) * rr, st.y + Math.sin(an) * rr);
       }
-      status('許可済み。端末を動かしてください');
-      setTimeout(() => {
-        if (!gotData) status('数字が出ません。この端末では使えないかもしれません');
-      }, 2000);
-    } catch (err) {
-      status('エラー：' + err.message);
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
+    scene.stars = scene.stars.filter(s => s.t < 1.2);
+  }
+  function burst(x, y){
+    for (let i = 0; i < 14; i++){
+      const a = Math.random() * Math.PI * 2, v = 80 + Math.random() * 120;
+      scene.stars.push({x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, r: 6 + Math.random() * 6, t: 0});
+    }
+  }
+  // 傾きの小さな表示（支援者がわかるように）
+  function drawMeter(){
+    const v = scene.mode === 'cradle' ? lr : (fwdSign ? fb * fwdSign : fb);
+    const txt = (scene.mode === 'cradle' ? '左右 ' : '前後 ') + v.toFixed(1) + '°';
+    ctx.font = '600 15px system-ui,sans-serif';
+    ctx.fillStyle = 'rgba(74,59,40,.55)';
+    ctx.fillText(txt, 16, 28 + (window.visualViewport ? 0 : 0));
+  }
+
+  // ---------- ループ ----------
+  let last = performance.now(), phaseFn = null;
+  function loop(now){
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    drawBg();
+    if (phaseFn) phaseFn(dt, now);
+    drawStars(dt);
+    if (base && scene.mode !== 'idle') drawMeter();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ---------- 段階 ----------
+  function start(){
+    $result.style.display = 'none';
+    scene.mode = 'idle'; phaseFn = null;
+    ui('かたむき そくてい', '座って、ふだんの持ち方で、両手で持ちます。案内のとおりに進めると、自動で測ります。（3分くらい）',
+      [{t: 'はじめる', main: true, f: chooseHolder}]);
+  }
+
+  function chooseHolder(){
+    ui('だれが持ちますか？', '結果に書くだけです。名前は記録しません。', []);
+    $who.style.display = 'flex'; $who.innerHTML = '';
+    for (const w of ['子ども', '大人（子どもの持ち方をまねて）', '大人と子ども いっしょに']){
+      const b = document.createElement('button'); b.textContent = w;
+      b.onclick = () => { holder = w; askPermission(); };
+      $who.appendChild(b);
     }
   }
 
-  $('perm').onclick = enable;
+  async function askPermission(){
+    ui('センサーを使います', '「許可」を押してください。', [{t: 'センサーを許可する', main: true, f: async () => {
+      tone(440, .15, .04);
+      ui('じゅんび中…', '');
+      const r = await enableSensor();
+      if (r === 'ok') calibrate();
+      else if (r === 'denied') ui('許可されませんでした', 'Safari を開き直して、もう一度「許可」を押してください。', [{t: 'もう一度', main: true, f: askPermission}]);
+      else ui('センサーの数字が出ません', 'この端末やブラウザでは使えないかもしれません。iPhone・iPad の Safari で開いてください。', [{t: 'もう一度', main: true, f: askPermission}]);
+    }}]);
+  }
 
-  $('zero').onclick = () => {
-    if (rawB === null) { status('まだ数字が出ていません'); return; }
-    base = { b: rawB, g: rawG };
-    status('水平の基準を取りました');
-  };
-
-  $('still').onclick = () => {
-    still = { t0: performance.now(), minF: 1e9, maxF: -1e9, minL: 1e9, maxL: -1e9 };
-    $('stillOut').textContent = '5秒、端末をじっとさせてください…';
-  };
-
-  $('back').onclick = () => {
-    back = { t0: performance.now(), maxF: 0, maxL: 0 };
-    $('backOut').textContent = '3秒、そのまま水平に置いてください…';
-  };
-
-  document.querySelectorAll('button[data-k]').forEach(btn => {
-    btn.onclick = () => {
-      const k = btn.dataset.k;
-      records.push(`${k}：前後 ${f1(peak.fb)}／左右 ${f1(peak.lr)}`);
-      $('log').textContent = records.join('\n');
-      peak = { fb: 0, lr: 0 };
+  // 1. 水平を決める（2秒じっと）
+  function calibrate(){
+    scene.mode = 'bowl'; fwdSign = 0; base = null;
+    let t = 0, prev = null, wob = 0;
+    ui('ふだんの持ち方で、じっと持ってください', '2秒じっとしていると、いまの持ち方を「水平（0°）」にします。', [], 0);
+    phaseFn = (dt) => {
+      drawBowl(W / 2, H * .5, Math.min(W, H) * .22, 0);
+      if (!raw) return;
+      if (prev){ wob = Math.max(Math.abs(raw.fb - prev.fb), Math.abs(raw.lr - prev.lr)); }
+      prev = {...raw};
+      t = wob < 0.6 ? t + dt : Math.max(0, t - dt * 2);
+      setBar(t / 2);
+      if (t >= 2){ resetBase(); tone(660, .3); still(); }
     };
-  });
+  }
 
-  $('resetPeak').onclick = () => {
-    peak = { fb: 0, lr: 0 };
-    status('最大をリセットしました');
-  };
+  // 2. じっと5秒（手ぶれ）
+  function still(){
+    const samples = []; let t = 0;
+    ui('そのまま、じっと持っていてね', 'ボールが まんなかから動かないように。（5秒）', [], 0);
+    phaseFn = (dt) => {
+      const r = Math.min(W, H) * .22;
+      drawBowl(W / 2, H * .5, r, (lr + fb) * r * .04);
+      t += dt; samples.push({fb, lr}); setBar(t / 5);
+      if (t >= 5){
+        const dev = samples.map(s => Math.hypot(s.fb, s.lr));
+        rec.stillP95 = pct(dev, .95);
+        rec.stillMax = Math.max(...dev);
+        rec.stillRangeFb = Math.max(...samples.map(s => s.fb)) - Math.min(...samples.map(s => s.fb));
+        rec.stillRangeLr = Math.max(...samples.map(s => s.lr)) - Math.min(...samples.map(s => s.lr));
+        chime(); burst(W / 2, H * .4);
+        forwardIntro();
+      }
+    };
+  }
 
-  $('copy').onclick = async () => {
-    const text = [
-      '[傾けたときの最大]', ...(records.length ? records : ['（なし）']),
-      '[じっと]', ...(stillResults.length ? stillResults : ['（なし）']),
-      '[水平に戻したときのずれ]', ...(backResults.length ? backResults : ['（なし）'])
-    ].join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      $('copyMsg').textContent = 'コピーしました';
-    } catch (e) {
-      $('copyMsg').textContent = 'コピーできませんでした。画面の数字を手で書き写してください';
-    }
+  // 3. 前に傾けて進む（2回）
+  const fwdSamples = []; const startAngles = []; const stopRes = [];
+  function forwardIntro(){
+    fwdSamples.length = 0; startAngles.length = 0; stopRes.length = 0;
+    ui('つぎは「ておしぐるま」', '端末の向こう側を、ゆっくり下げる（前に傾ける）と、子どもが進みます。はたまで行こう。', [{t: 'すすむ', main: true, f: () => forward(1)}]);
+    scene.mode = 'wheel';
+    scene.x = 0;
+    phaseFn = () => { const y = groundY() + H * .12, s = Math.min(W, H) * .16; drawGround(); drawWheelbarrow(W * .2, y, s, 0); drawFlag(W * .85, y, s * 1.2); };
+  }
+  function drawGround(){
+    const y = groundY() + H * .12;
+    ctx.fillStyle = '#e3d2ad'; ctx.fillRect(0, y, W, H - y);
+    ctx.strokeStyle = '#c9b48a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  function forward(round){
+    scene.mode = 'wheel'; scene.x = 0; scene.armT = 0;
+    let moving = false, signT = 0, firstMove = true, t0 = performance.now(), idle = 0;
+    resetBase();
+    ui(round === 1 ? '前に、ゆっくり傾けてね' : 'もう1回！ 前に傾けてね',
+      '自分で「ちょうどいい」と思う傾きで進めてください。（' + round + '/2）', [], 0);
+    phaseFn = (dt) => {
+      const y = groundY() + H * .12, s = Math.min(W, H) * .16;
+      const x0 = W * .2, x1 = W * .78;
+      // 前の向きを決める（はじめに6°以上 0.3秒）
+      if (!fwdSign){
+        const v = Math.abs(fb) > Math.abs(lr) ? fb : 0;
+        if (Math.abs(v) > 6){ signT += dt; if (signT > .3) fwdSign = Math.sign(v); }
+        else signT = 0;
+      }
+      const f = fwdSign ? fb * fwdSign : 0;
+      if (f > 3) fwdSamples.push(f);
+      if (fwdSign && firstMove && f > 3){
+        // 動き出したときの角度（0.3秒後）
+        idle += dt;
+        if (idle > .3){ startAngles.push(f); firstMove = false; }
+      }
+      const speed = Math.max(0, Math.min(1, (f - 3) / 22));
+      moving = speed > 0;
+      scene.x = Math.min(1, scene.x + speed * dt * .16);
+      if (moving) scene.armT += dt * (4 + speed * 6);
+      setBar(scene.x);
+      drawGround();
+      drawFlag(W * .85, y, s * 1.2);
+      drawWheelbarrow(x0 + (x1 - x0) * scene.x, y, s, scene.armT);
+      if (scene.x >= 1){
+        chime(); burst(W * .85, y - s);
+        rec['fwdTime' + round] = (performance.now() - t0) / 1000;
+        stopMeasure(round);
+      }
+    };
+  }
+
+  // 4. 水平に戻す（止まりの判定）
+  function stopMeasure(round){
+    let t = 0, settled = null, stable = 0, after = [], maxDev = 0;
+    ui('ついたね！ 水平に もどしてね', '端末を、はじめの持ち方に もどして、じっと。（3秒）', [], 0);
+    const y = groundY() + H * .12, s = Math.min(W, H) * .16;
+    phaseFn = (dt) => {
+      drawGround(); drawFlag(W * .85, y, s * 1.2); drawWheelbarrow(W * .78, y, s, scene.armT);
+      t += dt;
+      const f = fwdSign ? fb * fwdSign : fb;
+      if (settled === null){
+        if (Math.abs(f) < 5){ stable += dt; if (stable >= .4) settled = t; }
+        else stable = 0;
+        setBar(Math.min(1, t / 8));
+        if (t > 8){ settled = NaN; }
+      } else {
+        after.push(f); maxDev = Math.max(maxDev, Math.abs(f));
+        setBar(Math.min(1, (t - (isNaN(settled) ? 8 : settled)) / 3));
+        if (after.length && t - (isNaN(settled) ? 8 : settled) >= 3){
+          stopRes.push({ settle: settled, range: Math.max(...after) - Math.min(...after), maxDev });
+          tone(784, .3);
+          if (round < 2) forward(2); else cradleIntro();
+        }
+      }
+    };
+  }
+
+  // 5. 左右（ゆりかご）
+  const lrSamples = [];
+  function cradleIntro(){
+    lrSamples.length = 0; scene.mode = 'cradle';
+    ui('つぎは「ゆりかご」', '端末を、左と右に、ゆっくり傾けてね。ゆりかごが いっしょに揺れます。（15秒）',
+      [{t: 'ゆらす', main: true, f: cradle}]);
+    phaseFn = () => { drawCradle(W / 2, H * .4, Math.min(W, H) * .22, 0); };
+  }
+  function cradle(){
+    resetBase();
+    let t = 0, left = 0, right = 0;
+    ui('左と右に、ゆっくり傾けてね', '左右どちらにも傾けてください。', [], 0);
+    phaseFn = (dt) => {
+      t += dt;
+      lrSamples.push(lr);
+      if (lr < -3) left = Math.min(left, lr);
+      if (lr > 3) right = Math.max(right, lr);
+      const target = Math.max(-0.5, Math.min(0.5, lr * Math.PI / 180 * 1.2));
+      scene.swingV += (target - scene.swing) * 8 * dt; scene.swingV *= .9; scene.swing += scene.swingV;
+      drawCradle(W / 2, H * .4, Math.min(W, H) * .22, scene.swing);
+      setBar(t / 15);
+      if (t >= 15){
+        const abs = lrSamples.filter(v => Math.abs(v) > 3).map(Math.abs);
+        rec.lrMed = pct(abs, .5); rec.lrP90 = pct(abs, .9);
+        rec.lrLeft = -left; rec.lrRight = right;
+        chime(); burst(W / 2, H * .35);
+        showResult();
+      }
+    };
+  }
+
+  // ---------- 結果 ----------
+  let resultText = '';
+  function showResult(){
+    phaseFn = null; scene.mode = 'idle';
+    const f25 = pct(fwdSamples, .25), f50 = pct(fwdSamples, .5), f75 = pct(fwdSamples, .75), f90 = pct(fwdSamples, .9);
+    const fMax = fwdSamples.length ? Math.max(...fwdSamples) : NaN;
+    const startA = startAngles.length ? startAngles.reduce((a, b) => a + b, 0) / startAngles.length : NaN;
+    const settle = stopRes.map(r => r.settle).filter(isFinite);
+    const settleAvg = settle.length ? settle.reduce((a, b) => a + b, 0) / settle.length : NaN;
+    const backRange = stopRes.length ? Math.max(...stopRes.map(r => r.range)) : NaN;
+    const backMax = stopRes.length ? Math.max(...stopRes.map(r => r.maxDev)) : NaN;
+
+    // めやすの計算
+    const dead = Math.max(2, Math.min(6, Math.round((rec.stillP95 || 1) * 1.5 + 1)));
+    // 大きい＝動き出したころの浅い角度、ふつう＝自然に傾けたまんなか、小さい＝しっかり傾けた角度
+    const lowA = Math.min(isFinite(startA) ? startA : Infinity, isFinite(f25) ? f25 : Infinity);
+    const big = Math.round(Math.max(dead + 3, isFinite(lowA) ? lowA : 8));
+    const mid = Math.round(Math.max(big + 4, isFinite(f50) ? f50 : 15));
+    const small = Math.round(Math.max(mid + 4, isFinite(f90) ? f90 : 25));
+    const stopOk = isFinite(backMax) ? (backMax < big * .6) : null;
+
+    const now = new Date();
+    const dstr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const scr = Math.round(screen.width) + '×' + Math.round(screen.height) + (W > H ? '（横）' : '（たて）');
+    const isPad = /iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const dev = isPad ? 'iPad' : /iPhone/.test(navigator.userAgent) ? 'iPhone' : /Android/.test(navigator.userAgent) ? 'Android' : 'その他';
+
+    const rows = [
+      ['日時', dstr], ['端末', dev + ' ' + scr], ['持った人', holder],
+      ['じっと：手ぶれ（95%）', d1(rec.stillP95)], ['じっと：前後のゆれ幅', d1(rec.stillRangeFb)], ['じっと：左右のゆれ幅', d1(rec.stillRangeLr)],
+      ['前：動き出したときの角度', d1(startA)],
+      ['前：少し（下から25%）', d1(f25)], ['前：ふつう（まんなか）', d1(f50)], ['前：大きく（上から25%）', d1(f75)],
+      ['前：大きく（上から10%）', d1(f90)], ['前：いちばん大きい', d1(fMax)],
+      ['はたまでの時間 1回目', s1(rec.fwdTime1)], ['はたまでの時間 2回目', s1(rec.fwdTime2)],
+      ['水平にもどるまで（平均）', s1(settleAvg)], ['もどしたあとのゆれ幅', d1(backRange)], ['もどしたあとの最大ずれ', d1(backMax)],
+      ['左右：ふつう（まんなか）', d1(rec.lrMed)], ['左右：大きく（上から10%）', d1(rec.lrP90)],
+      ['左右：左のいちばん', d1(rec.lrLeft)], ['左右：右のいちばん', d1(rec.lrRight)]
+    ];
+    const sug = [
+      ['小さなゆれを無視（不感帯）', dead + '°'],
+      ['手助け 大きい（仕様の仮：8°）', big + '°'],
+      ['手助け ふつう（仕様の仮：15°）', mid + '°'],
+      ['手助け 小さい（仕様の仮：25°）', small + '°'],
+      ['止まる角度（大きいの60%）', Math.round(big * .6) + '°' + (stopOk === null ? '' : stopOk ? '（もどしたゆれより大きい：OK）' : '（もどしたゆれが大きい：要調整）')]
+    ];
+    const fill = (el, data) => { el.innerHTML = data.map(r => '<tr><th>' + r[0] + '</th><td>' + r[1] + '</td></tr>').join(''); };
+    fill(document.getElementById('resTable'), rows);
+    fill(document.getElementById('sugTable'), sug);
+
+    resultText = ['【かたむき そくてい けっか】', ...rows.map(r => r[0] + '：' + r[1]),
+      '', '【手助けの角度の めやす】', ...sug.map(r => r[0] + '：' + r[1]),
+      '', '（前の角度は、自分で傾けて進めていたときの角度の分布です）'].join('\n');
+    document.getElementById('resText').textContent = resultText;
+    document.getElementById('copyMsg').textContent = '';
+    $result.style.display = 'block'; $result.scrollTop = 0;
+  }
+
+  document.getElementById('copyBtn').onclick = async () => {
+    const m = document.getElementById('copyMsg');
+    try{ await navigator.clipboard.writeText(resultText); m.textContent = 'コピーしました。LINE やメモに貼り付けられます。'; }
+    catch(e){ m.textContent = 'コピーできませんでした。上の文字を長押しして選んでください。'; }
   };
+  document.getElementById('saveBtn').onclick = () => {
+    const blob = new Blob([resultText], {type: 'text/plain;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const d = new Date();
+    a.download = 'katamuki-' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0') + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0') + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  document.getElementById('againBtn').onclick = () => { calibrate(); $result.style.display = 'none'; };
+
+  // テスト用（自動確認のときだけ使う）
+  window.__tilt = { setRaw: (b, g) => onOri({beta: b, gamma: g}) };
+
+  start();
 })();
 </script>
 </body>
